@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: task_manager_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      API_PREFIX: /api/v1
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/task_manager_ci?schema=public
+      JWT_ACCESS_SECRET: ci_access_secret_123456789
+      JWT_REFRESH_SECRET: ci_refresh_secret_123456789
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL: 7d
+      AUTO_PROVISION_OAUTH_USERS: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        run: npm test

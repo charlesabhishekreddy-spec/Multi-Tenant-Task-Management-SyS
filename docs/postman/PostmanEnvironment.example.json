@@ -1,0 +1,15 @@
+{
+  "id": "f41de6da-40ce-40bf-b3d5-cfdb6a67a001",
+  "name": "Task Manager Local",
+  "values": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1", "enabled": true },
+    { "key": "organizationSlug", "value": "acme", "enabled": true },
+    { "key": "accessToken", "value": "", "enabled": true },
+    { "key": "refreshToken", "value": "", "enabled": true },
+    { "key": "taskId", "value": "", "enabled": true },
+    { "key": "userId", "value": "", "enabled": true }
+  ],
+  "_postman_variable_scope": "environment",
+  "_postman_exported_at": "2026-04-23T00:00:00.000Z",
+  "_postman_exported_using": "GitHub Copilot"
+}

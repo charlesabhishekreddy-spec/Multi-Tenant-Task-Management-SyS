@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  tasks     Task[]
+  auditLogs AuditLog[]
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String
+  passwordHash   String?
+  name           String
+  role           Role     @default(MEMBER)
+  oauthProvider  String?
+  oauthSubject   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdTasks   Task[]       @relation("TaskCreator")
+  assignedTasks  Task[]       @relation("TaskAssignee")
+  auditLogs      AuditLog[]   @relation("AuditPerformer")
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+}
+
+model Task {
+  id             String     @id @default(cuid())
+  organizationId String
+  title          String
+  description    String?
+  status         TaskStatus @default(TODO)
+  createdBy      String
+  assignedTo     String?
+  priority       Int?
+  deadline       DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator        User         @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  assignee       User?        @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  auditLogs      AuditLog[]
+
+  @@index([organizationId])
+  @@index([organizationId, createdBy])
+  @@index([organizationId, assignedTo])
+  @@index([organizationId, status])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  actionType     String
+  performedBy    String
+  taskId         String?
+  changes        Json?
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  performer      User         @relation("AuditPerformer", fields: [performedBy], references: [id], onDelete: Cascade)
+  task           Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([organizationId, taskId])
+  @@index([createdAt])
+}
