@@ -46,6 +46,25 @@ docker compose up --build
 docker compose exec backend npm run prisma:migrate
 ```
 
+## Frontend
+
+A polished React + Vite interface lives in the `frontend/` folder. It includes:
+
+- A professional login screen with JWT authentication
+- A dashboard for tasks, users, and audit logs
+- Organization-scoped task management
+- A token refresh action for longer demo sessions
+
+Run it locally with:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The dev server proxies API requests to `http://127.0.0.1:3000`, so the backend should already be running first.
+
 ## Local Run
 
 1. Install dependencies:
