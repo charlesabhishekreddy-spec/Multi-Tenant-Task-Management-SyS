@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { AuditList } from '../components/AuditList'
 import { MetricCard } from '../components/MetricCard'
 import { SectionCard } from '../components/SectionCard'
@@ -32,8 +33,8 @@ export function DashboardPage() {
   const [isReloading, setIsReloading] = useState(false)
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [taskDraft, setTaskDraft] = useState({ title: '', description: '', priority: '2' })
-  const [userDraft, setUserDraft] = useState({ email: '', password: '', role: 'MEMBER' as 'ADMIN' | 'MEMBER' })
+  const [taskDraft, setTaskDraft] = useState({ title: '', description: '', priority: '2', assignedTo: '' })
+  const [userDraft, setUserDraft] = useState({ name: '', email: '', password: '', role: 'MEMBER' as 'ADMIN' | 'MEMBER' })
 
   useEffect(() => {
     async function loadData() {
@@ -118,24 +119,14 @@ export function DashboardPage() {
   }, [session?.user.role, tasks, users.length])
 
   if (!session) {
-    return (
-      <main className="flex min-h-screen items-center justify-center px-4 text-slate-100">
-        <div className="glass-panel max-w-md px-6 py-5 text-center">
-          <p className="section-title mb-3">Session</p>
-          <h1 className="text-2xl font-semibold text-white">Redirecting to sign in</h1>
-          <p className="mt-3 text-sm text-slate-400">
-            Your session is not available yet. If this persists, reload the page and sign in again.
-          </p>
-          <div className="mt-4 text-sm text-slate-500">Loading secure workspace...</div>
-        </div>
-      </main>
-    )
+    return <Navigate to="/login" replace />
   }
 
   const accessToken = session.accessToken
   const role = session.user.role
   const organizationId = session.user.organizationId
   const userId = session.user.id
+  const memberOptions = users.filter((user) => user.role === 'MEMBER')
 
   async function reloadData() {
     try {
@@ -197,9 +188,10 @@ export function DashboardPage() {
       title: taskDraft.title,
       description: taskDraft.description,
       priority: Number(taskDraft.priority),
+      assignedTo: taskDraft.assignedTo || undefined,
       status: 'TODO',
     })
-    setTaskDraft({ title: '', description: '', priority: '2' })
+    setTaskDraft({ title: '', description: '', priority: '2', assignedTo: '' })
     await reloadData()
     setActiveTab('tasks')
   }
@@ -207,7 +199,7 @@ export function DashboardPage() {
   async function handleCreateUser(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     await createUser(accessToken, userDraft)
-    setUserDraft({ email: '', password: '', role: 'MEMBER' })
+    setUserDraft({ name: '', email: '', password: '', role: 'MEMBER' })
     await reloadData()
     setActiveTab('team')
   }
@@ -387,6 +379,24 @@ export function DashboardPage() {
                     className="w-full rounded-2xl border-white/10 bg-slate-950/50 px-4 py-3 text-white"
                   />
                 </label>
+                <label className="space-y-2 sm:col-span-2">
+                  <span className="text-sm text-slate-300">Assign to member</span>
+                  <select
+                    value={taskDraft.assignedTo}
+                    onChange={(event) => setTaskDraft((draft) => ({ ...draft, assignedTo: event.target.value }))}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-slate-100 shadow-inner shadow-black/20"
+                  >
+                    <option value="" className="bg-slate-950 text-slate-100">Unassigned</option>
+                    {memberOptions.map((member) => (
+                      <option key={member.id} value={member.id} className="bg-slate-950 text-slate-100">
+                        {member.name ?? member.email}
+                      </option>
+                    ))}
+                  </select>
+                  {memberOptions.length === 0 ? (
+                    <p className="text-xs text-slate-500">No members are available to assign yet.</p>
+                  ) : null}
+                </label>
                 <div className="flex items-end justify-end sm:col-span-2">
                   <button
                     type="submit"
@@ -437,10 +447,21 @@ export function DashboardPage() {
             <SectionCard title="Add user" eyebrow="Administration">
               <form className="space-y-4" onSubmit={handleCreateUser}>
                 <label className="block space-y-2">
+                  <span className="text-sm text-slate-300">Name</span>
+                  <input
+                    value={userDraft.name}
+                    onChange={(event) => setUserDraft((draft) => ({ ...draft, name: event.target.value }))}
+                    autoComplete="name"
+                    className="w-full rounded-2xl border-white/10 bg-slate-950/50 px-4 py-3 text-white"
+                    placeholder="Jane Doe"
+                  />
+                </label>
+                <label className="block space-y-2">
                   <span className="text-sm text-slate-300">Email</span>
                   <input
                     value={userDraft.email}
                     onChange={(event) => setUserDraft((draft) => ({ ...draft, email: event.target.value }))}
+                    autoComplete="username"
                     className="w-full rounded-2xl border-white/10 bg-slate-950/50 px-4 py-3 text-white"
                     placeholder="member@acme.com"
                   />
@@ -451,6 +472,7 @@ export function DashboardPage() {
                     type="password"
                     value={userDraft.password}
                     onChange={(event) => setUserDraft((draft) => ({ ...draft, password: event.target.value }))}
+                    autoComplete="new-password"
                     className="w-full rounded-2xl border-white/10 bg-slate-950/50 px-4 py-3 text-white"
                     placeholder="UserPassword123!"
                   />

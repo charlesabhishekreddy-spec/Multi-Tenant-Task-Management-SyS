@@ -22,6 +22,7 @@ export function TaskTable({ tasks, onStatusChange, onDelete, canDelete }: TaskTa
             <th className="px-4 py-3 font-medium">Status</th>
             <th className="px-4 py-3 font-medium">Priority</th>
             <th className="px-4 py-3 font-medium">Owner</th>
+            <th className="px-4 py-3 font-medium">Assigned</th>
             <th className="px-4 py-3 font-medium" />
           </tr>
         </thead>
@@ -37,6 +38,9 @@ export function TaskTable({ tasks, onStatusChange, onDelete, canDelete }: TaskTa
               </td>
               <td className="px-4 py-4">{task.priority ?? 0}</td>
               <td className="px-4 py-4 text-slate-300">{task.createdBy?.email ?? 'Unknown'}</td>
+              <td className="px-4 py-4 text-slate-300">
+                {task.assignedTo ? task.assignedTo.name ?? task.assignedTo.email ?? 'Unassigned' : 'Unassigned'}
+              </td>
               <td className="px-4 py-4">
                 <div className="flex items-center gap-2">
                   <select

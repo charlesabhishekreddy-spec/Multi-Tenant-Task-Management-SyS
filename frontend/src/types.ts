@@ -32,15 +32,20 @@ export type Task = {
   createdAt?: string
   updatedAt?: string
   createdBy?: {
+    id?: string
     email?: string
+    name?: string
   }
   assignedTo?: {
+    id?: string
     email?: string
+    name?: string
   } | null
 }
 
 export type UserRecord = {
   id: string
+  name?: string
   email: string
   role: AuthRole
   createdAt?: string
@@ -52,6 +57,8 @@ export type AuditLogRecord = {
   createdAt?: string
   taskId?: string | null
   performedBy?: {
+    id?: string
     email?: string
+    name?: string
   }
 }

@@ -11,6 +11,40 @@ type AuthContext = {
   role: "ADMIN" | "MEMBER";
 };
 
+function shapeTask(task: {
+  id: string;
+  organizationId: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  createdBy: string;
+  assignedTo: string | null;
+  priority: number | null;
+  deadline: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  creator?: { id: string; email: string; name: string };
+  assignee?: { id: string; email: string; name: string } | null;
+}) {
+  return {
+    ...task,
+    createdBy: task.creator
+      ? {
+          id: task.creator.id,
+          email: task.creator.email,
+          name: task.creator.name
+        }
+      : { id: task.createdBy },
+    assignedTo: task.assignee
+      ? {
+          id: task.assignee.id,
+          email: task.assignee.email,
+          name: task.assignee.name
+        }
+      : null
+  };
+}
+
 export async function createTask(
   app: FastifyInstance,
   auth: AuthContext,
@@ -49,15 +83,27 @@ export async function createTask(
     }
   });
 
+  const shapedTask = await app.prisma.task.findUnique({
+    where: { id: task.id },
+    include: {
+      creator: {
+        select: { id: true, email: true, name: true }
+      },
+      assignee: {
+        select: { id: true, email: true, name: true }
+      }
+    }
+  });
+
   await logTaskAudit(app, {
     organizationId: auth.organizationId,
     performedBy: auth.userId,
     actionType: "TASK_CREATED",
     taskId: task.id,
-    changes: { after: task }
+    changes: { after: shapedTask ?? task }
   });
 
-  return task;
+  return shapedTask ? shapeTask(shapedTask) : task;
 }
 
 export async function listTasks(
@@ -86,13 +132,21 @@ export async function listTasks(
       where,
       skip: pagination.skip,
       take: pagination.take,
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      include: {
+        creator: {
+          select: { id: true, email: true, name: true }
+        },
+        assignee: {
+          select: { id: true, email: true, name: true }
+        }
+      }
     }),
     app.prisma.task.count({ where })
   ]);
 
   return {
-    items,
+    items: items.map((task) => shapeTask(task)),
     total,
     page: pagination.page,
     limit: pagination.limit
@@ -152,15 +206,27 @@ export async function updateTask(
     }
   });
 
+  const shapedUpdated = await app.prisma.task.findUnique({
+    where: { id: updated.id },
+    include: {
+      creator: {
+        select: { id: true, email: true, name: true }
+      },
+      assignee: {
+        select: { id: true, email: true, name: true }
+      }
+    }
+  });
+
   await logTaskAudit(app, {
     organizationId: auth.organizationId,
     performedBy: auth.userId,
     actionType: "TASK_UPDATED",
     taskId: task.id,
-    changes: { before: task, after: updated }
+    changes: { before: task, after: shapedUpdated ?? updated }
   });
 
-  return updated;
+  return shapedUpdated ? shapeTask(shapedUpdated) : updated;
 }
 
 export async function deleteTask(app: FastifyInstance, auth: AuthContext, taskId: string) {

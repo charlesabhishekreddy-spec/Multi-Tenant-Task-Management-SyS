@@ -1,8 +1,10 @@
 import type { AuditLogRecord, LoginResponse, Task, UserRecord } from '../types'
 
 const authKey = 'iit-task-manager-auth'
+const dashboardCacheVersion = 2
 
 export type DashboardCache = {
+  version: number
   tasks: Task[]
   users: UserRecord[]
   auditLogs: AuditLogRecord[]
@@ -51,7 +53,12 @@ export function readDashboardCache(scope: DashboardScope): DashboardCache | null
 
   try {
     const parsed = JSON.parse(raw) as DashboardCache
-    if (!Array.isArray(parsed.tasks) || !Array.isArray(parsed.users) || !Array.isArray(parsed.auditLogs)) {
+    if (
+      parsed.version !== dashboardCacheVersion ||
+      !Array.isArray(parsed.tasks) ||
+      !Array.isArray(parsed.users) ||
+      !Array.isArray(parsed.auditLogs)
+    ) {
       localStorage.removeItem(getDashboardCacheKey(scope))
       return null
     }
@@ -63,8 +70,9 @@ export function readDashboardCache(scope: DashboardScope): DashboardCache | null
   }
 }
 
-export function writeDashboardCache(scope: DashboardScope, cache: Omit<DashboardCache, 'updatedAt'>): DashboardCache {
+export function writeDashboardCache(scope: DashboardScope, cache: Omit<DashboardCache, 'version' | 'updatedAt'>): DashboardCache {
   const payload: DashboardCache = {
+    version: dashboardCacheVersion,
     ...cache,
     updatedAt: new Date().toISOString(),
   }

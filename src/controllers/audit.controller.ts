@@ -19,10 +19,27 @@ export async function listAuditLogsHandler(request: FastifyRequest, reply: Fasti
       where,
       skip,
       take: limit,
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
+      include: {
+        performer: {
+          select: { id: true, email: true, name: true }
+        }
+      }
     }),
     request.server.prisma.auditLog.count({ where })
   ]);
 
-  return reply.send({ items, total, page, limit });
+  return reply.send({
+    items: items.map((item) => ({
+      ...item,
+      performedBy: {
+        id: item.performer.id,
+        email: item.performer.email,
+        name: item.performer.name
+      }
+    })),
+    total,
+    page,
+    limit
+  });
 }

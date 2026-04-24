@@ -81,7 +81,7 @@ export function fetchTasks(token: string) {
 
 export function createTask(
   token: string,
-  payload: { title: string; description?: string; priority?: number; status?: string },
+  payload: { title: string; description?: string; priority?: number; status?: string; assignedTo?: string },
 ) {
   return request<Task>('/tasks', {
     method: 'POST',
@@ -112,7 +112,7 @@ export function fetchUsers(token: string) {
 
 export function createUser(
   token: string,
-  payload: { email: string; password: string; role: 'ADMIN' | 'MEMBER' },
+  payload: { name: string; email: string; password: string; role: 'ADMIN' | 'MEMBER' },
 ) {
   return request<UserRecord>('/users', {
     method: 'POST',
