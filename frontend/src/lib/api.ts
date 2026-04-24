@@ -1,9 +1,12 @@
 import type { AuditLogRecord, LoginResponse, Task, TokenPair, UserRecord } from '../types'
 
 const apiBase = '/api/v1'
+const requestTimeoutMs = 10000
 
 async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(init.headers)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs)
 
   if (!headers.has('Content-Type') && init.method && init.method !== 'GET') {
     headers.set('Content-Type', 'application/json')
@@ -13,21 +16,49 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
     headers.set('Authorization', `Bearer ${token}`)
   }
 
-  const response = await fetch(`${apiBase}${path}`, {
-    ...init,
-    headers,
-  })
+  try {
+    const response = await fetch(`${apiBase}${path}`, {
+      ...init,
+      headers,
+      signal: controller.signal,
+    })
 
-  if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Request failed with status ${response.status}`)
+    if (!response.ok) {
+      const message = await response.text()
+      throw new Error(message || `Request failed with status ${response.status}`)
+    }
+
+    if (response.status === 204) {
+      return undefined as T
+    }
+
+    return response.json() as Promise<T>
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Request timed out. Please check that the backend is running.')
+    }
+
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function toItemsArray<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) {
+    return payload as T[]
   }
 
-  if (response.status === 204) {
-    return undefined as T
+  if (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'items' in payload &&
+    Array.isArray((payload as { items?: unknown }).items)
+  ) {
+    return (payload as { items: T[] }).items
   }
 
-  return response.json() as Promise<T>
+  return []
 }
 
 export function login(payload: { organizationSlug: string; email: string; password: string }) {
@@ -45,7 +76,7 @@ export function refreshToken(payload: TokenPair) {
 }
 
 export function fetchTasks(token: string) {
-  return request<Task[]>('/tasks', { method: 'GET' }, token)
+  return request<unknown>('/tasks', { method: 'GET' }, token).then((payload) => toItemsArray<Task>(payload))
 }
 
 export function createTask(
@@ -76,7 +107,7 @@ export function deleteTask(token: string, taskId: string) {
 }
 
 export function fetchUsers(token: string) {
-  return request<UserRecord[]>('/users', { method: 'GET' }, token)
+  return request<unknown>('/users', { method: 'GET' }, token).then((payload) => toItemsArray<UserRecord>(payload))
 }
 
 export function createUser(
@@ -90,5 +121,5 @@ export function createUser(
 }
 
 export function fetchAuditLogs(token: string) {
-  return request<AuditLogRecord[]>('/audit-logs', { method: 'GET' }, token)
+  return request<unknown>('/audit-logs', { method: 'GET' }, token).then((payload) => toItemsArray<AuditLogRecord>(payload))
 }

@@ -40,13 +40,13 @@ export function TaskTable({ tasks, onStatusChange, onDelete, canDelete }: TaskTa
               <td className="px-4 py-4">
                 <div className="flex items-center gap-2">
                   <select
-                    className="rounded-xl border-white/10 bg-white/5 text-sm text-slate-100"
+                    className="rounded-xl border border-white/10 bg-slate-950 text-sm text-slate-100 shadow-inner shadow-black/20"
                     value={task.status}
                     onChange={(event) => onStatusChange(task, event.target.value)}
                   >
-                    <option value="TODO">Todo</option>
-                    <option value="IN_PROGRESS">In progress</option>
-                    <option value="DONE">Done</option>
+                    <option value="TODO" className="bg-slate-950 text-slate-100">Todo</option>
+                    <option value="IN_PROGRESS" className="bg-slate-950 text-slate-100">In progress</option>
+                    <option value="DONE" className="bg-slate-950 text-slate-100">Done</option>
                   </select>
                   {canDelete ? (
                     <button

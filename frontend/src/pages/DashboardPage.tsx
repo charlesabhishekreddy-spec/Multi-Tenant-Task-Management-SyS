@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Navigate } from 'react-router-dom'
 import { AuditList } from '../components/AuditList'
 import { MetricCard } from '../components/MetricCard'
 import { SectionCard } from '../components/SectionCard'
@@ -15,6 +14,7 @@ import {
   fetchUsers,
   updateTask,
 } from '../lib/api'
+import { readDashboardCache, writeDashboardCache } from '../lib/storage'
 import { useAuthStore } from '../store/authStore'
 import type { AuditLogRecord, Task, UserRecord } from '../types'
 
@@ -28,7 +28,9 @@ export function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [users, setUsers] = useState<UserRecord[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([])
-  const [loading, setLoading] = useState(true)
+  const [isBootstrapping, setIsBootstrapping] = useState(true)
+  const [isReloading, setIsReloading] = useState(false)
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [taskDraft, setTaskDraft] = useState({ title: '', description: '', priority: '2' })
   const [userDraft, setUserDraft] = useState({ email: '', password: '', role: 'MEMBER' as 'ADMIN' | 'MEMBER' })
@@ -39,23 +41,65 @@ export function DashboardPage() {
         return
       }
 
+      const cacheScope = {
+        organizationId: session.user.organizationId,
+        userId: session.user.id,
+      }
+
+      const cached = readDashboardCache(cacheScope)
+
+      if (cached) {
+        setTasks(cached.tasks)
+        setUsers(cached.users)
+        setAuditLogs(cached.auditLogs)
+        setLastSyncedAt(cached.updatedAt)
+        setIsBootstrapping(false)
+      }
+
       try {
-        setLoading(true)
+        if (!cached) {
+          setIsBootstrapping(true)
+        }
         setError(null)
 
-        const [nextTasks, nextUsers, nextAuditLogs] = await Promise.all([
-          fetchTasks(session.accessToken),
-          session.user.role === 'ADMIN' ? fetchUsers(session.accessToken) : Promise.resolve([]),
-          session.user.role === 'ADMIN' ? fetchAuditLogs(session.accessToken) : Promise.resolve([]),
-        ])
-
+        const nextTasks = await fetchTasksWithRetry()
         setTasks(nextTasks)
-        setUsers(nextUsers)
-        setAuditLogs(nextAuditLogs)
+
+        let nextUsers: UserRecord[] = []
+        let nextAuditLogs: AuditLogRecord[] = []
+
+        if (session.user.role === 'ADMIN') {
+          const [usersResult, auditResult] = await fetchAdminDataWithRetry()
+
+          if (usersResult.status === 'fulfilled') {
+            nextUsers = usersResult.value
+            setUsers(nextUsers)
+          } else if (cached) {
+            nextUsers = cached.users
+          }
+
+          if (auditResult.status === 'fulfilled') {
+            nextAuditLogs = auditResult.value
+            setAuditLogs(nextAuditLogs)
+          } else if (cached) {
+            nextAuditLogs = cached.auditLogs
+          }
+
+          if (usersResult.status === 'rejected' || auditResult.status === 'rejected') {
+            setError('Some admin data could not be loaded. You can still use tasks and retry.')
+          }
+        }
+
+        const persisted = writeDashboardCache(cacheScope, {
+          tasks: nextTasks,
+          users: nextUsers,
+          auditLogs: nextAuditLogs,
+        })
+        setLastSyncedAt(persisted.updatedAt)
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : 'Unable to load dashboard data')
       } finally {
-        setLoading(false)
+        setIsBootstrapping(false)
       }
     }
 
@@ -74,22 +118,77 @@ export function DashboardPage() {
   }, [session?.user.role, tasks, users.length])
 
   if (!session) {
-    return <Navigate to="/login" replace />
+    return (
+      <main className="flex min-h-screen items-center justify-center px-4 text-slate-100">
+        <div className="glass-panel max-w-md px-6 py-5 text-center">
+          <p className="section-title mb-3">Session</p>
+          <h1 className="text-2xl font-semibold text-white">Redirecting to sign in</h1>
+          <p className="mt-3 text-sm text-slate-400">
+            Your session is not available yet. If this persists, reload the page and sign in again.
+          </p>
+          <div className="mt-4 text-sm text-slate-500">Loading secure workspace...</div>
+        </div>
+      </main>
+    )
   }
 
   const accessToken = session.accessToken
   const role = session.user.role
+  const organizationId = session.user.organizationId
+  const userId = session.user.id
 
   async function reloadData() {
-    const [nextTasks, nextUsers, nextAuditLogs] = await Promise.all([
-      fetchTasks(accessToken),
-      role === 'ADMIN' ? fetchUsers(accessToken) : Promise.resolve([]),
-      role === 'ADMIN' ? fetchAuditLogs(accessToken) : Promise.resolve([]),
-    ])
+    try {
+      setIsReloading(true)
+      setError(null)
 
-    setTasks(nextTasks)
-    setUsers(nextUsers)
-    setAuditLogs(nextAuditLogs)
+      const cacheScope = {
+        organizationId,
+        userId,
+      }
+
+      const nextTasks = await fetchTasksWithRetry()
+      setTasks(nextTasks)
+
+      if (role === 'ADMIN') {
+        const [usersResult, auditResult] = await fetchAdminDataWithRetry()
+
+        let nextUsers: UserRecord[] = users
+        let nextAuditLogs: AuditLogRecord[] = auditLogs
+
+        if (usersResult.status === 'fulfilled') {
+          nextUsers = usersResult.value
+          setUsers(nextUsers)
+        }
+
+        if (auditResult.status === 'fulfilled') {
+          nextAuditLogs = auditResult.value
+          setAuditLogs(nextAuditLogs)
+        }
+
+        if (usersResult.status === 'rejected' || auditResult.status === 'rejected') {
+          setError('Partial refresh completed. Some admin data is temporarily unavailable.')
+        }
+
+        const persisted = writeDashboardCache(cacheScope, {
+          tasks: nextTasks,
+          users: nextUsers,
+          auditLogs: nextAuditLogs,
+        })
+        setLastSyncedAt(persisted.updatedAt)
+      } else {
+        const persisted = writeDashboardCache(cacheScope, {
+          tasks: nextTasks,
+          users: [],
+          auditLogs: [],
+        })
+        setLastSyncedAt(persisted.updatedAt)
+      }
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : 'Unable to refresh dashboard data')
+    } finally {
+      setIsReloading(false)
+    }
   }
 
   async function handleCreateTask(event: React.FormEvent<HTMLFormElement>) {
@@ -125,6 +224,53 @@ export function DashboardPage() {
 
   async function handleRefreshToken() {
     await refresh()
+  }
+
+  async function fetchTasksWithRetry() {
+    try {
+      return await fetchTasks(accessToken)
+    } catch (fetchError) {
+      const message = fetchError instanceof Error ? fetchError.message : ''
+
+      if (message.includes('401') || message.toLowerCase().includes('unauthorized')) {
+        const refreshedToken = await refresh()
+
+        if (refreshedToken) {
+          return await fetchTasks(refreshedToken)
+        }
+      }
+
+      throw fetchError
+    }
+  }
+
+  async function fetchAdminDataWithRetry() {
+    const firstPass = await Promise.allSettled([
+      fetchUsers(accessToken),
+      fetchAuditLogs(accessToken),
+    ])
+
+    const hadAuthFailure = firstPass.some((result) => {
+      return result.status === 'rejected' && result.reason instanceof Error && (
+        result.reason.message.includes('401') ||
+        result.reason.message.toLowerCase().includes('unauthorized')
+      )
+    })
+
+    if (!hadAuthFailure) {
+      return firstPass
+    }
+
+    const refreshedToken = await refresh()
+
+    if (!refreshedToken) {
+      return firstPass
+    }
+
+    return await Promise.allSettled([
+      fetchUsers(refreshedToken),
+      fetchAuditLogs(refreshedToken),
+    ])
   }
 
   return (
@@ -180,17 +326,35 @@ export function DashboardPage() {
           ))}
         </nav>
 
+        <div className="flex items-center justify-between gap-3 text-sm text-slate-400">
+          <span>
+            {isReloading
+              ? 'Refreshing data...'
+              : lastSyncedAt
+                ? `Last synced ${new Date(lastSyncedAt).toLocaleTimeString()}`
+                : 'Data is live.'}
+          </span>
+          <button
+            type="button"
+            onClick={reloadData}
+            disabled={isReloading}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isReloading ? 'Refreshing...' : 'Refresh data'}
+          </button>
+        </div>
+
         {error ? (
           <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
             {error}
           </div>
         ) : null}
 
-        {loading ? (
+        {isBootstrapping ? (
           <div className="glass-panel p-10 text-center text-slate-400">Loading dashboard...</div>
         ) : null}
 
-        {!loading && activeTab === 'overview' ? (
+        {!isBootstrapping && activeTab === 'overview' ? (
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             <SectionCard title="Create a task" eyebrow="Operations" action={<span className="chip">Organization scoped</span>}>
               <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleCreateTask}>
@@ -262,13 +426,13 @@ export function DashboardPage() {
           </div>
         ) : null}
 
-        {!loading && activeTab === 'tasks' ? (
+        {!isBootstrapping && activeTab === 'tasks' ? (
           <SectionCard title="Tasks" eyebrow="Work queue">
             <TaskTable tasks={tasks} onStatusChange={handleStatusChange} onDelete={handleDeleteTask} canDelete />
           </SectionCard>
         ) : null}
 
-        {!loading && activeTab === 'team' ? (
+        {!isBootstrapping && activeTab === 'team' ? (
           <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
             <SectionCard title="Add user" eyebrow="Administration">
               <form className="space-y-4" onSubmit={handleCreateUser}>
@@ -314,7 +478,7 @@ export function DashboardPage() {
           </div>
         ) : null}
 
-        {!loading && activeTab === 'activity' ? (
+        {!isBootstrapping && activeTab === 'activity' ? (
           <SectionCard title="Audit log" eyebrow="Accountability">
             <AuditList records={auditLogs} />
           </SectionCard>

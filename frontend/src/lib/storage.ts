@@ -1,6 +1,22 @@
-import type { LoginResponse } from '../types'
+import type { AuditLogRecord, LoginResponse, Task, UserRecord } from '../types'
 
 const authKey = 'iit-task-manager-auth'
+
+export type DashboardCache = {
+  tasks: Task[]
+  users: UserRecord[]
+  auditLogs: AuditLogRecord[]
+  updatedAt: string
+}
+
+type DashboardScope = {
+  organizationId: string
+  userId: string
+}
+
+function getDashboardCacheKey(scope: DashboardScope) {
+  return `iit-task-manager-dashboard:${scope.organizationId}:${scope.userId}`
+}
 
 export function readAuthState(): LoginResponse | null {
   const raw = localStorage.getItem(authKey)
@@ -24,4 +40,35 @@ export function writeAuthState(state: LoginResponse | null) {
   }
 
   localStorage.setItem(authKey, JSON.stringify(state))
+}
+
+export function readDashboardCache(scope: DashboardScope): DashboardCache | null {
+  const raw = localStorage.getItem(getDashboardCacheKey(scope))
+
+  if (!raw) {
+    return null
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as DashboardCache
+    if (!Array.isArray(parsed.tasks) || !Array.isArray(parsed.users) || !Array.isArray(parsed.auditLogs)) {
+      localStorage.removeItem(getDashboardCacheKey(scope))
+      return null
+    }
+
+    return parsed
+  } catch {
+    localStorage.removeItem(getDashboardCacheKey(scope))
+    return null
+  }
+}
+
+export function writeDashboardCache(scope: DashboardScope, cache: Omit<DashboardCache, 'updatedAt'>): DashboardCache {
+  const payload: DashboardCache = {
+    ...cache,
+    updatedAt: new Date().toISOString(),
+  }
+
+  localStorage.setItem(getDashboardCacheKey(scope), JSON.stringify(payload))
+  return payload
 }

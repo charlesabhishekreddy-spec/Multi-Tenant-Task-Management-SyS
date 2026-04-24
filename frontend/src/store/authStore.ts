@@ -9,7 +9,7 @@ type AuthState = {
   isAuthenticating: boolean
   error: string | null
   hydrate: () => void
-  signIn: (payload: { organizationSlug: string; email: string; password: string }) => Promise<void>
+  signIn: (payload: { organizationSlug: string; email: string; password: string }) => Promise<LoginResponse>
   signOut: () => void
   refresh: () => Promise<string | null>
   setSession: (session: LoginResponse | null) => void
@@ -30,6 +30,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const session = await loginRequest(payload)
       writeAuthState(session)
       set({ session, isAuthenticating: false })
+      return session
     } catch (error) {
       set({ isAuthenticating: false, error: error instanceof Error ? error.message : 'Login failed' })
       throw error

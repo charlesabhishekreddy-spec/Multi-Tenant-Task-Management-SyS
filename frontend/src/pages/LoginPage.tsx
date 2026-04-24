@@ -13,8 +13,11 @@ export function LoginPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    await signIn({ organizationSlug, email, password })
-    navigate('/app', { replace: true })
+    const session = await signIn({ organizationSlug, email, password })
+
+    if (session) {
+      navigate('/app', { replace: true })
+    }
   }
 
   return (
@@ -60,6 +63,7 @@ export function LoginPage() {
               <input
                 value={organizationSlug}
                 onChange={(event) => setOrganizationSlug(event.target.value)}
+                autoComplete="organization"
                 className="w-full rounded-2xl border-white/10 bg-slate-950/50 px-4 py-3 text-white placeholder:text-slate-500"
                 placeholder="acme"
               />
@@ -71,6 +75,7 @@ export function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
+                autoComplete="username"
                 className="w-full rounded-2xl border-white/10 bg-slate-950/50 px-4 py-3 text-white placeholder:text-slate-500"
                 placeholder="admin@acme.com"
               />
@@ -82,6 +87,7 @@ export function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
                 className="w-full rounded-2xl border-white/10 bg-slate-950/50 px-4 py-3 text-white placeholder:text-slate-500"
                 placeholder="Admin123!"
               />
